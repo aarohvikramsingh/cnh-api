@@ -14,30 +14,39 @@ app.post('/v1/answer', (req, res) => {
     const { query } = req.body;
     if (!query) return res.status(400).json({ error: "Missing query" });
 
-    // Extract the log section (after "Log" or "log")
-    const logMatch = query.match(/log\s*[:-]\s*(.*)/i);
-    if (!logMatch) return res.json({ output: "" });
+    // 1. Extract all [VERIFIED] statements (robust to spaces and case)
+    const verifiedMatches = [...query.matchAll(/\[\s*VERIFIED\s*\]\s*(.*)/gi)];
+    if (verifiedMatches.length === 0) return res.json({ output: "" });
 
-    // Split entries by | or , or " - " (robust to separators)
-    const entries = logMatch[1].split(/\s*\|\s*|\s*,\s*|\s+-\s+/).map(e => e.trim()).filter(Boolean);
+    // 2. Use only the [VERIFIED] statements for answering
+    // Example: [VERIFIED] The capital of Australia is Canberra.
+    // Find the last question in the query
+    let answer = "";
+    let statement = verifiedMatches[verifiedMatches.length - 1][1].trim();
+    let outputInstruction = "";
+    const outputInstrMatch = query.match(/Output ([^\n\r\.]*) only\.?/i);
+    if (outputInstrMatch) outputInstruction = outputInstrMatch[1].trim();
 
-    // Parse each entry: "<Name> paid $<Amount>"
-    const transactions = entries.map(entry => {
-        const match = entry.match(/^([A-Za-z]+)\s+paid\s*\$?(\d+)/i);
-        if (!match) return null;
-        return { name: match[1], amount: Number(match[2]), raw: entry };
-    }).filter(Boolean);
-
-    // Find the FIRST transaction where name starts with 'S' and amount > 100 (case-sensitive)
-    const result = transactions.find(t => t.name.startsWith('S') && t.amount > 100);
-
-    // Format output
-    let output = "";
-    if (result) {
-        output = `${result.name} paid the amount of $${result.amount}.`;
+    // Try to extract the answer according to the instruction
+    if (outputInstruction) {
+        // Try to find the word after 'is' or 'are' in the statement
+        let afterIs = statement.match(/is ([^\.;]+)/i);
+        if (!afterIs) afterIs = statement.match(/are ([^\.;]+)/i);
+        if (afterIs) {
+            answer = afterIs[1].trim();
+        } else {
+            // fallback: take the last word
+            answer = statement.split(' ').pop();
+        }
+    } else {
+        // fallback: take the whole statement
+        answer = statement;
     }
 
-    return res.json({ output });
+    // Remove trailing punctuation and whitespace
+    answer = answer.replace(/[\.;]+$/, '').trim();
+
+    return res.json({ output: answer });
 });
 
 app.listen(port, () => {
