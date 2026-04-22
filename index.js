@@ -18,44 +18,44 @@ app.post('/v1/answer', (req, res) => {
     const verifiedMatches = [...query.matchAll(/\[\s*VERIFIED\s*\]\s*(.*)/gi)];
     if (verifiedMatches.length === 0) return res.json({ output: "" });
 
+    // Use the last [VERIFIED] statement for the answer
+    let statement = verifiedMatches[verifiedMatches.length - 1][1].trim();
+
     // Find the output instruction (e.g., Output city name only)
     let outputInstruction = "";
     const outputInstrMatch = query.match(/Output ([^\n\r\.]*) only\.?/i);
     if (outputInstrMatch) outputInstruction = outputInstrMatch[1].trim();
 
-    // Use the last [VERIFIED] statement for the answer
-    let statement = verifiedMatches[verifiedMatches.length - 1][1].trim();
     let answer = "";
 
-    // Try to extract the answer according to the instruction
-    if (outputInstruction) {
-        // Try to find the word after 'is' or 'are' in the statement
+    if (/city name/i.test(outputInstruction)) {
+        // Extract after 'is' or 'are', take the first word (city name)
+        let afterIs = statement.match(/is ([^\.;]+)/i);
+        if (!afterIs) afterIs = statement.match(/are ([^\.;]+)/i);
+        if (afterIs) {
+            answer = afterIs[1].trim().split(' ')[0];
+        } else {
+            answer = statement.split(' ').pop();
+        }
+    } else if (/number/i.test(outputInstruction)) {
+        const numMatch = statement.match(/\d+(\.\d+)?/);
+        if (numMatch) answer = numMatch[0];
+    } else if (/date/i.test(outputInstruction)) {
+        const dateMatch = statement.match(/\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}|\d{1,2} \w+ \d{4}/);
+        if (dateMatch) answer = dateMatch[0];
+    } else {
+        // Default: extract after 'is' or 'are', else return the statement
         let afterIs = statement.match(/is ([^\.;]+)/i);
         if (!afterIs) afterIs = statement.match(/are ([^\.;]+)/i);
         if (afterIs) {
             answer = afterIs[1].trim();
         } else {
-            // fallback: take the last word or phrase
-            answer = statement.split(' ').slice(-1)[0];
+            answer = statement;
         }
-    } else {
-        // fallback: take the whole statement
-        answer = statement;
     }
 
     // Remove trailing punctuation and whitespace
     answer = answer.replace(/[\.;]+$/, '').trim();
-
-    // If the instruction says to output only a number, extract the number
-    if (/number/i.test(outputInstruction)) {
-        const numMatch = answer.match(/\d+(\.\d+)?/);
-        if (numMatch) answer = numMatch[0];
-    }
-    // If the instruction says to output only a date, extract the date
-    if (/date/i.test(outputInstruction)) {
-        const dateMatch = answer.match(/\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4}|\d{1,2} \w+ \d{4}/);
-        if (dateMatch) answer = dateMatch[0];
-    }
 
     return res.json({ output: answer });
 });
